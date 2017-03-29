@@ -1,5 +1,5 @@
 /*
-** $Id: lpcode.h,v 1.6 2013/11/28 14:56:02 roberto Exp $
+** $Id: lpcode.h,v 1.8 2016/09/15 17:46:13 roberto Exp $
 */
 
 #if !defined(lpcode_h)
@@ -13,7 +13,7 @@
 
 int tocharset (TTree *tree, Charset *cs);
 int checkaux (TTree *tree, int pred);
-int fixedlenx (TTree *tree, int count, int len);
+int fixedlen (TTree *tree);
 int hascaptures (TTree *tree);
 int lp_gc (lua_State *L);
 Instruction *compile (lua_State *L, Pattern *p);
@@ -24,10 +24,16 @@ int sizei (const Instruction *i);
 #define PEnullable      0
 #define PEnofail        1
 
+/*
+** nofail(t) implies that 't' cannot fail with any input
+*/
 #define nofail(t)	checkaux(t, PEnofail)
-#define nullable(t)	checkaux(t, PEnullable)
 
-#define fixedlen(t)     fixedlenx(t, 0, 0)
+/*
+** (not nullable(t)) implies 't' cannot match without consuming
+** something
+*/
+#define nullable(t)	checkaux(t, PEnullable)
 
 
 

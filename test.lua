@@ -1,6 +1,6 @@
-#!/usr/bin/env lua5.1
+#!/usr/bin/env lua
 
--- $Id: test.lua,v 1.106 2015/03/04 17:31:33 roberto Exp $
+-- $Id: test.lua,v 1.112 2017/01/14 18:55:22 roberto Exp $
 
 -- require"strict"    -- just to be pedantic
 
@@ -15,9 +15,6 @@ local a, b, c, d, e, f, g, p, t
 local unpack = rawget(table, "unpack") or unpack
 local loadstring = rawget(_G, "loadstring") or load
 
-
--- most tests here do not need much stack space
-m.setmaxstack(5)
 
 local any = m.P(1)
 local space = m.S" \t\n"^0
@@ -205,6 +202,14 @@ do
 end
 
 
+-- bug: loop in 'hascaptures'
+do
+  local p = m.C(-m.P{m.P'x' * m.V(1) + m.P'y'})
+  assert(p:match("xxx") == "")
+end
+
+
+
 -- test for small capture boundary
 for i = 250,260 do
   assert(#m.match(m.C(i), string.rep('a', i)) == i)
@@ -291,6 +296,13 @@ assert(m.match(m.P"ab"^-1 - "c", "abcd") == 3)
 
 p = ('Aa' * ('Bb' * ('Cc' * m.P'Dd'^0)^0)^0)^-1
 assert(p:match("AaBbCcDdBbCcDdDdDdBb") == 21)
+
+
+-- bug in 0.12.2
+-- p = { ('ab' ('c' 'ef'?)*)? }
+p = m.C(('ab' * ('c' * m.P'ef'^-1)^0)^-1)
+s = "abcefccefc"
+assert(s == p:match(s))
  
 
 pi = "3.14159 26535 89793 23846 26433 83279 50288 41971 69399 37510"
@@ -351,6 +363,11 @@ t = p:match''
 checkeq(t, {hi = 10, ho = 20})
 t = p:match'abc'
 checkeq(t, {hi = 10, ho = 20, 'a', 'b', 'c'})
+
+-- non-string group names
+p = m.Ct(m.Cg(1, print) * m.Cg(1, 23.5) * m.Cg(1, io))
+t = p:match('abcdefghij')
+assert(t[print] == 'a' and t[23.5] == 'b' and t[io] == 'c')
 
 
 -- test for error messages
@@ -508,6 +525,27 @@ assert(m.match(m.Cs((#((#m.P"a")/"") * 1 + m.P(1)/".")^0), "aloal") == "a..a.")
 assert(m.match(m.Cs((- -m.P("a") * 1 + m.P(1)/".")^0), "aloal") == "a..a.")
 assert(m.match(m.Cs((-((-m.P"a")/"") * 1 + m.P(1)/".")^0), "aloal") == "a..a.")
 
+
+-- fixed length
+do
+  -- 'and' predicate using fixed length
+  local p = m.C(#("a" * (m.P("bd") + "cd")) * 2)
+  assert(p:match("acd") == "ac")
+
+  p = #m.P{ "a" * m.V(2), m.P"b" } * 2
+  assert(p:match("abc") == 3)
+
+  p = #(m.P"abc" * m.B"c")
+  assert(p:match("abc") == 1 and not p:match("ab"))
+ 
+  p = m.P{ "a" * m.V(2), m.P"b"^1 }
+  checkerr("pattern may not have fixed length", m.B, p)
+
+  p = "abc" * (m.P"b"^1 + m.P"a"^0)
+  checkerr("pattern may not have fixed length", m.B, p)
+end
+
+
 p = -m.P'a' * m.Cc(1) + -m.P'b' * m.Cc(2) + -m.P'c' * m.Cc(3)
 assert(p:match('a') == 2 and p:match('') == 1 and p:match('b') == 1)
 
@@ -594,9 +632,9 @@ assert(not p:match(string.rep("011", 10001)))
 -- this grammar does need backtracking info.
 local lim = 10000
 p = m.P{ '0' * m.V(1) + '0' }
-checkerr("too many pending", m.match, p, string.rep("0", lim))
+checkerr("stack overflow", m.match, p, string.rep("0", lim))
 m.setmaxstack(2*lim)
-checkerr("too many pending", m.match, p, string.rep("0", lim))
+checkerr("stack overflow", m.match, p, string.rep("0", lim))
 m.setmaxstack(2*lim + 4)
 assert(m.match(p, string.rep("0", lim)) == lim + 1)
 
@@ -605,7 +643,7 @@ p = m.P{ ('a' * m.V(1))^0 * 'b' + 'c' }
 m.setmaxstack(200)
 assert(p:match(string.rep('a', 180) .. 'c' .. string.rep('b', 180)) == 362)
 
-m.setmaxstack(5)   -- restore original limit
+m.setmaxstack(100)   -- restore low limit
 
 -- tests for optional start position
 assert(m.match("a", "abc", 1))
@@ -736,6 +774,10 @@ checkeq(t, {1, 1, "a", "b", "c"})
 t = {m.match(m.Cc(nil,nil,4) * m.Cc(nil,3) * m.Cc(nil, nil) / g / g, "")}
 t1 = {1,1,nil,nil,4,nil,3,nil,nil}
 for i=1,10 do assert(t[i] == t1[i]) end
+
+-- bug in 0.12.2: ktable with only nil could be eliminated when joining
+-- with a pattern without ktable
+assert((m.P"aaa" * m.Cc(nil)):match"aaa" == nil)
 
 t = {m.match((m.C(1) / function (x) return x, x.."x" end)^0, "abc")}
 checkeq(t, {"a", "ax", "b", "bx", "c", "cx"})
@@ -944,6 +986,13 @@ p = m.Cg(m.C(1) * m.C(1), "k") * m.Ct(m.Cb("k"))
 t = p:match("ab")
 checkeq(t, {"a", "b"})
 
+p = m.P(true)
+for i = 1, 10 do p = p * m.Cg(1, i) end
+for i = 1, 10 do
+  local p = p * m.Cb(i)
+  assert(p:match('abcdefghij') == string.sub('abcdefghij', i, i))
+end
+
 
 t = {}
 function foo (p) t[#t + 1] = p; return p .. "x" end
@@ -1076,6 +1125,32 @@ do
   local p = m.P{ m.Cmt(0, foo) * m.P(false) + m.P(1) * m.V(1) + m.P"" }
   p:match(string.rep('1', 10))
   assert(c == 11)
+end
+
+
+-- Return a match-time capture that returns 'n' captures
+local function manyCmt (n)
+    return m.Cmt("a", function ()
+             local a = {}; for i = 1, n do a[i] = n - i end
+             return true, unpack(a)
+           end)
+end
+
+-- bug in 1.0: failed match-time that used previous match-time results
+do
+  local x
+  local function aux (...) x = #{...}; return false end
+  local res = {m.match(m.Cmt(manyCmt(20), aux) + manyCmt(10), "a")}
+  assert(#res == 10 and res[1] == 9 and res[10] == 0)
+end
+
+
+-- bug in 1.0: problems with math-times returning too many captures
+do
+  local lim = 2^11 - 10
+  local res = {m.match(manyCmt(lim), "a")}
+  assert(#res == lim and res[1] == lim - 1 and res[lim] == 0)
+  checkerr("too many", m.match, manyCmt(2^15), "a")
 end
 
 p = (m.P(function () return true, "a" end) * 'a'
