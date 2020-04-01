@@ -1,0 +1,7 @@
+lpcap.o
+lpcode.o
+lpeg.a
+lpeg.so
+lpprint.o
+lptree.o
+lpvm.o

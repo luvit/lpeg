@@ -24,12 +24,16 @@ CWARNS = -Wall -Wextra -pedantic \
 
 CFLAGS = $(CWARNS) $(COPT) -std=c99 -I$(LUADIR) -fPIC
 CC = gcc
+AR = ar
+RANLIB = ranlib
+
 
 FILES = lpvm.o lpcap.o lptree.o lpcode.o lpprint.o
 
 # For Linux
 linux:
 	$(MAKE) lpeg.so "DLLFLAGS = -shared -fPIC"
+	$(MAKE) lpeg.a
 
 # For Mac OS
 macosx:
@@ -38,13 +42,17 @@ macosx:
 lpeg.so: $(FILES)
 	env $(CC) $(DLLFLAGS) $(FILES) -o lpeg.so
 
+lpeg.a: $(FILES)
+	env $(AR) rc lpeg.a $(FILES)
+	env $(RANLIB) lpeg.a
+
 $(FILES): makefile
 
 test: test.lua re.lua lpeg.so
 	./test.lua
 
 clean:
-	rm -f $(FILES) lpeg.so
+	rm -f $(FILES) lpeg.so lpeg.a
 
 
 lpcap.o: lpcap.c lpcap.h lptypes.h
